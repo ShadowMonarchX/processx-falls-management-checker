@@ -14,5 +14,5 @@ def test_end_to_end_output_creation(tmp_path):
     validator = ValidationEngine(INPUT_WORKBOOK_PATH, output_path, engine)
     validator.run()
     workbook = load_workbook(output_path)
-    assert workbook["Alice Nguyen - Your Output"]["A4"].value is None
+    assert workbook["Alice Nguyen - Your Output"]["A4"].value == "Day 1"
     assert workbook["Robert Singh - Your Output"]["A4"].value == "Day 1"
