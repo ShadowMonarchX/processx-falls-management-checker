@@ -1,0 +1,23 @@
+[project]
+name = "processx-falls-management-checker"
+version = "1.0.0"
+description = "Policy-driven falls management documentation compliance checker"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2.0",
+    "openpyxl>=3.1.5",
+    "python-docx>=1.1.2",
+    "pydantic>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
