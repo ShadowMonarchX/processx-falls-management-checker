@@ -1,83 +1,91 @@
-# ProcessX Falls Management Documentation Compliance Checker
+# ProcessX Falls Management Compliance Checker
 
 ## Project Overview
-
-This project implements a policy-driven compliance checker for post-fall nursing documentation. It reads resident progress notes, extracts validation rules from the Falls Management Policy, and writes specific compliance flags back into the provided workbook structure.
+This project reads a falls management policy and resident progress notes from Excel workbooks, extracts policy rules, validates each note against those rules, and writes policy-explainable compliance flags into the existing output worksheets.
 
 ## Business Problem
+Care staff must document post-fall monitoring consistently and completely. The task is to detect missing, vague, incomplete, and non-compliant documentation so a nurse can see exactly what needs to be corrected.
 
-After a resident fall, care staff must document immediate actions and follow-up monitoring across three consecutive days. Missing, incomplete, or vague documentation creates clinical risk and makes it hard to prove policy compliance.
+## Solution Design
+The checker uses:
 
-## Solution Architecture
+- DOCX parsing to read the policy source of truth
+- Structured policy rules to represent documentation requirements
+- Excel parsing to locate resident input/output sheet pairs
+- A rule-based compliance engine to compare notes with policy requirements
+- Workbook writing that preserves the template structure and formatting
 
-The solution is built with a layered architecture:
+## Architecture
+The code is organized by clean architecture boundaries:
 
-- `parsers` read DOCX and XLSX sources
-- `services` apply policy extraction, note analysis, validation, and workbook writing
-- `domain` and `core` define the rule and flag models
-- `ai` contains future extension points for LLM-assisted rule mapping
+- `src/core` for shared contracts, constants, exceptions, and models
+- `src/domain` for domain-specific model aliases
+- `src/parsers` for document and workbook parsing
+- `src/services` for validation and workbook output
+- `src/ai` for prompt and rule mapping utilities
+- `src/utils` for logging and filesystem helpers
 
 ## Folder Structure
 
-- `data/raw` source brief, policy, and workbooks
-- `data/processed` reserved for intermediate artifacts
-- `outputs` completed workbook output
-- `docs` architecture, assumptions, and decision log
-- `src` application code
-- `tests` unit and integration tests
+```text
+data/raw/
+data/processed/
+docs/
+outputs/
+src/
+tests/
+```
 
 ## Installation
-
-Using pip:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Setup
+Or with uv:
 
-Copy `.env.example` to `.env` if you want to customize input or output paths.
+```bash
+uv sync
+```
 
 ## Execution
-
-Run the checker:
 
 ```bash
 python src/main.py
 ```
 
-The completed workbook is written to `outputs/completed_output.xlsx`.
+Or:
 
-## Validation Process
+```bash
+uv run src/main.py
+```
 
-1. Parse the policy document into structured rules.
-2. Read each resident's input worksheet.
-3. Validate Day 1, Day 2, and Day 3 notes against the policy.
-4. Generate specific, explainable flags.
-5. Append the flags into the corresponding output worksheet.
-6. Save the completed workbook.
+The generated workbook is written to `outputs/completed_output.xlsx`.
 
-## Design Decisions
-
-- The policy is converted into explicit rule objects instead of being re-sent to an LLM on every note.
-- Flags are day-specific and policy-linked to make interview explanation straightforward.
-- The workbook writer preserves the existing structure and only appends rows.
+## Validation Flow
+1. Load the policy DOCX.
+2. Extract structured requirements into rule objects.
+3. Load the workbook and identify each resident input/output sheet pair.
+4. Parse each day’s progress note into a resident note model.
+5. Apply the policy rules for that day.
+6. Write policy-explainable flags into the output sheet.
 
 ## Assumptions
+- The provided policy document is the source of truth.
+- Existing workbook structure and formatting must be preserved.
+- Output worksheets are already present and must be reused.
+- One row in the input workbook represents one day of progress notes.
 
-- The policy document is authoritative.
-- The sample workbook represents the expected style of valid flags.
-- Day labels follow a three-day sequence.
+## Design Decisions
+- The checker uses structured policy rules instead of free-form prompting during validation.
+- Each generated flag includes policy rule, trigger condition, evidence, missing requirement, and recommendation.
+- Workbook updates append into the blank output table rather than recreating sheets.
 
 ## Limitations
-
-- The current engine is deterministic and does not use a live LLM.
-- The checker focuses on the provided falls-management task and does not generalize to unrelated documentation domains without new rules.
+- The implementation is focused on the supplied policy and workbook patterns.
+- It is rule-based rather than a live LLM integration at validation time.
 
 ## Future Improvements
-
-- Expand the policy parser to infer more rules automatically from policy prose.
-- Add richer natural-language explanation generation.
-- Preserve cell styling when appending new rows.
-- Add workbook-level verification for downstream interview review.
-
+- Expand the rule mapper to support additional policy documents.
+- Add more granular field-level extraction for richer explanations.
+- Extend the workbook writer to preserve row heights and styling when appending large volumes of flags.

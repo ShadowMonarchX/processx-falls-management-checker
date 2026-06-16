@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from src.core.exceptions import WorkbookError
 from src.core.models import ResidentNoteModel
 from src.services.compliance_engine import ComplianceEngine
 from src.services.excel_writer import ExcelWriter
@@ -13,28 +14,33 @@ class ValidationEngine:
 
     def run(self) -> None:
         writer = ExcelWriter(self.output_workbook)
-        wb = writer.open_workbook(self.source_workbook)
-        for sheet_name in wb.sheetnames:
+        workbook = writer.open_workbook(self.source_workbook)
+        for sheet_name in workbook.sheetnames:
             if not sheet_name.endswith(" - Input"):
                 continue
-            resident_name = sheet_name.replace(" - Input", "")
-            input_sheet = wb[sheet_name]
-            flags = []
-            for row in range(4, input_sheet.max_row + 1):
-                day = input_sheet[f"A{row}"].value
-                date = input_sheet[f"B{row}"].value
-                documented_by = input_sheet[f"C{row}"].value
-                note_text = input_sheet[f"D{row}"].value
-                if not day or not note_text:
-                    continue
-                note = ResidentNoteModel(
-                    resident_name=resident_name,
-                    day_label=str(day),
-                    date=str(date or ""),
-                    documented_by=str(documented_by or ""),
-                    note_text=str(note_text or ""),
-                )
-                flags.extend(self.compliance_engine.analyze(note))
-            output_sheet = f"{resident_name} - Your Output" if f"{resident_name} - Your Output" in wb.sheetnames else f"{resident_name} - Output"
-            writer.write_flags(wb, output_sheet, flags)
-        writer.save(wb)
+            resident_name = sheet_name[: -len(" - Input")]
+            output_sheet = f"{resident_name} - Your Output"
+            if output_sheet not in workbook.sheetnames:
+                raise WorkbookError(f"Output sheet missing for resident: {resident_name}")
+            flags = self._analyze_resident_sheet(workbook[sheet_name], resident_name)
+            writer.write_flags(workbook, output_sheet, flags)
+        writer.save(workbook)
+
+    def _analyze_resident_sheet(self, worksheet, resident_name: str):
+        flags = []
+        for row in range(4, worksheet.max_row + 1):
+            day = worksheet[f"A{row}"].value
+            date = worksheet[f"B{row}"].value
+            documented_by = worksheet[f"C{row}"].value
+            note_text = worksheet[f"D{row}"].value
+            if not day or not note_text:
+                continue
+            note = ResidentNoteModel(
+                resident_name=resident_name,
+                day_label=str(day),
+                date=str(date or ""),
+                documented_by=str(documented_by or ""),
+                note_text=str(note_text or ""),
+            )
+            flags.extend(self.compliance_engine.analyze(note))
+        return flags

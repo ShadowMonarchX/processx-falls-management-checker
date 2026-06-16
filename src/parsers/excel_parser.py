@@ -3,6 +3,8 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from src.core.exceptions import WorkbookError
+
 
 @dataclass(frozen=True)
 class WorkbookResidentSheet:
@@ -16,15 +18,19 @@ class ExcelParser:
         self.path = path
 
     def load(self):
+        if not self.path.exists():
+            raise WorkbookError(f"Workbook not found: {self.path}")
         return load_workbook(self.path)
 
     def resident_pairs(self) -> list[WorkbookResidentSheet]:
-        wb = self.load()
+        workbook = self.load()
         pairs: list[WorkbookResidentSheet] = []
-        for i in range(1, len(wb.sheetnames), 2):
-            input_sheet = wb.sheetnames[i - 1]
-            output_sheet = wb.sheetnames[i]
-            resident_name = input_sheet.replace(" - Input", "").replace(" - Your Output", "")
-            pairs.append(WorkbookResidentSheet(input_sheet, output_sheet, resident_name))
+        for sheet_name in workbook.sheetnames:
+            if not sheet_name.endswith(" - Input"):
+                continue
+            resident_name = sheet_name[: -len(" - Input")]
+            output_sheet = f"{resident_name} - Your Output"
+            if output_sheet not in workbook.sheetnames:
+                raise WorkbookError(f"Missing output sheet for {resident_name}")
+            pairs.append(WorkbookResidentSheet(sheet_name, output_sheet, resident_name))
         return pairs
-

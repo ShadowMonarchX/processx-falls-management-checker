@@ -13,10 +13,9 @@ def setup_logger(log_file: Path | None = None, level: str = "INFO") -> logging.L
     stream = logging.StreamHandler()
     stream.setFormatter(formatter)
     logger.addHandler(stream)
-    if log_file:
+    if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     return logger
-

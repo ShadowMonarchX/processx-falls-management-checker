@@ -13,11 +13,12 @@ from src.utils.logger import setup_logger
 
 def main() -> None:
     logger = setup_logger(LOGS_DIR / "processx.log")
-    rules = PolicyParserImpl(POLICY_PATH).parse()
     logger.info("Policy loaded")
+    rules = PolicyParserImpl(POLICY_PATH).parse()
     logger.info("Rules extracted")
     engine = ComplianceEngine(rules)
     validator = ValidationEngine(INPUT_WORKBOOK_PATH, COMPLETED_WORKBOOK_PATH, engine)
+    logger.info("Workbook loaded")
     validator.run()
     logger.info("Workbook written")
     logger.info("Validation completed")
