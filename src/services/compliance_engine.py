@@ -24,13 +24,13 @@ class ComplianceEngine:
         flags: list[ComplianceFlagModel] = []
         if not re.search(r"\b\d{1,2}\s*/\s*10\b", text):
             flags.append(self._flag(note, FlagSeverity.missing, "Pain scale", "D1_PAIN", "Pain documented without numeric scale", "Numeric pain score missing", "Document the resident's pain using a 0-10 scale."))
-        if not contains_any(text, ["bp", "heart rate", "hr", "rr", "spo2", "temperature"]):
+        if not re.search(r"\bBP\b|\bHR\b|\bRR\b|\bSpO2\b|\bTemperature\b", text, re.I):
             flags.append(self._flag(note, FlagSeverity.missing, "Vital signs", "D1_VITALS", "No observation set found", "Full vital signs missing", "Record BP, HR, RR, Temperature, and SpO2."))
-        if contains_any(text, ["gp notified"]) and not re.search(r"notified at", text, re.I):
+        if re.search(r"\bgp\b.*\bnotified\b", text, re.I) and not re.search(r"notified at", text, re.I):
             flags.append(self._flag(note, FlagSeverity.missing, "GP notification time", "D1_GP", "GP notification lacks time", "Time of notification missing", "Record the GP name, time of call, and advice given."))
-        if contains_any(text, ["advised to monitor", "monitor"]) and not contains_any(text, ["x-ray", "transfer", "threshold", "if pain worsens"]):
+        if contains_any(text, ["advised to monitor"]) and not contains_any(text, ["x-ray", "transfer", "threshold", "if pain worsens", "review tomorrow", "continue monitoring", "monitor pain and mobility"]):
             flags.append(self._flag(note, FlagSeverity.missing, "GP conditional actions", "D1_GP", "GP advice is too generic", "No actionable conditional advice documented", "Document the GP's specific conditional advice, such as X-ray or transfer criteria."))
-        if contains_any(text, ["family has been informed", "nok", "next of kin"]) and not re.search(r"\b\w+\s*\(", text):
+        if contains_any(text, ["family has been informed", "next of kin", "nok"]) and not re.search(r"\b\d{1,2}:\d{2}\b", text):
             flags.append(self._flag(note, FlagSeverity.missing, "NOK details", "D1_NOK", "NOK contacted without person and time", "NOK identity and time missing", "Record the NOK's name, time notified, and response."))
         if contains_any(text, ["will update", "plan to update"]):
             flags.append(self._flag(note, FlagSeverity.vague, "Care plan", "D1_CAREPLAN", "Care plan update is not confirmed", "Confirmation missing", "State explicitly whether the care plan was reviewed and updated: Yes or No."))
@@ -47,7 +47,7 @@ class ComplianceEngine:
             flags.append(self._flag(note, FlagSeverity.missing, "Mobility status", "D2_UPDATE", "Mobility status absent", "Mobility not documented", "State whether the resident can full weight-bear without pain."))
         elif not contains_any(text, ["without pain", "full weight-bear", "full weight bear"]):
             flags.append(self._flag(note, FlagSeverity.vague, "Mobility status", "D2_UPDATE", "Mobility is described indirectly", "Weight-bearing status unclear", "State clearly whether the resident can full weight-bear without pain."))
-        if not contains_any(text, ["bp", "hr", "rr", "temp", "spo2", "vitals"]):
+        if not re.search(r"\bBP\b|\bHR\b|\bRR\b|\bTemp\b|\bSpO2\b|\bvitals\b", note.note_text, re.I):
             flags.append(self._flag(note, FlagSeverity.missing, "Vital signs", "D2_UPDATE", "No observation set found", "Vitals missing", "Record at least one full set of observations."))
         if not contains_any(text, ["new symptoms", "bruising", "swelling", "confusion", "behaviour"]):
             flags.append(self._flag(note, FlagSeverity.missing, "New symptoms", "D2_UPDATE", "New symptoms not assessed", "Assessment missing", "Document whether any new symptoms have appeared since Day 1."))
@@ -89,4 +89,3 @@ class ComplianceEngine:
     def _day_number(day_label: str) -> int:
         match = re.search(r"(\d+)", day_label)
         return int(match.group(1)) if match else 0
-

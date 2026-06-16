@@ -15,7 +15,9 @@ class ExcelWriter:
 
     def write_flags(self, workbook, sheet_name: str, flags: list[ComplianceFlagModel]) -> None:
         ws = workbook[sheet_name]
-        start_row = ws.max_row + 1
+        start_row = 4
+        while any(ws[f"{col}{start_row}"].value not in (None, "") for col in "ABCD"):
+            start_row += 1
         for idx, flag in enumerate(flags, start=start_row):
             ws[f"A{idx}"] = flag.day_label
             ws[f"B{idx}"] = flag.severity.value
@@ -25,4 +27,3 @@ class ExcelWriter:
     def save(self, workbook) -> None:
         ensure_parent(self.output_path)
         workbook.save(self.output_path)
-

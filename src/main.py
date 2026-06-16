@@ -1,3 +1,9 @@
+from pathlib import Path
+import sys
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 from src.core.constants import COMPLETED_WORKBOOK_PATH, INPUT_WORKBOOK_PATH, LOGS_DIR, POLICY_PATH
 from src.parsers.policy_parser import PolicyParserImpl
 from src.services.compliance_engine import ComplianceEngine
@@ -19,4 +25,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

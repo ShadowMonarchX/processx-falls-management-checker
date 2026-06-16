@@ -16,5 +16,4 @@ def test_end_to_end_output_creation(tmp_path):
     validator.run()
     wb = load_workbook(output_path)
     assert "Alice Nguyen - Your Output" in wb.sheetnames
-    assert wb["Alice Nguyen - Your Output"]["A4"].value == ""
-
+    assert wb["Alice Nguyen - Your Output"]["A4"].value == "Day 1"
