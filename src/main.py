@@ -1,10 +1,16 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
+# This is the main entry point of the application, which orchestrates the loading of the policy, the processing of the resident notes, and the validation of compliance against the policy rules. It sets up logging to track the progress and outcomes of each step in the process.
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from src.core.constants import COMPLETED_WORKBOOK_PATH, INPUT_WORKBOOK_PATH, LOGS_DIR, POLICY_PATH
+from src.core.constants import (
+    COMPLETED_WORKBOOK_PATH,
+    INPUT_WORKBOOK_PATH,
+    LOGS_DIR,
+    POLICY_PATH,
+)
 from src.parsers.policy_parser import PolicyParserImpl
 from src.services.compliance_engine import ComplianceEngine
 from src.services.validation_engine import ValidationEngine

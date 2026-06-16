@@ -5,6 +5,9 @@ from openpyxl import load_workbook
 
 from src.core.exceptions import WorkbookError
 
+# ExcelParser is a simple parser for .xlsx files that extracts the input and output sheet names for each resident.
+# It is used to extract the input and output sheet names for each resident, which are then processed by the LLM.
+
 
 @dataclass(frozen=True)
 class WorkbookResidentSheet:

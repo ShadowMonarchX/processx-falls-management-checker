@@ -2,6 +2,9 @@ import logging
 from pathlib import Path
 
 
+# This file defines a utility function for setting up a logger that can log messages to both the console and an optional log file.
+# The logger is configured to output messages in a structured JSON format, which includes a timestamp, log level, logger name, and the log message itself.
+# This allows for easy integration with logging systems that can parse JSON logs and provides a consistent logging format across the application.
 def setup_logger(log_file: Path | None = None, level: str = "INFO") -> logging.Logger:
     logger = logging.getLogger("processx")
     if logger.handlers:

@@ -1,13 +1,23 @@
 from pathlib import Path
 
+from openpyxl.worksheet.worksheet import Worksheet
+
 from src.core.exceptions import WorkbookError
-from src.core.models import ResidentNoteModel
+from src.core.models import ComplianceFlagModel, ResidentNoteModel
 from src.services.compliance_engine import ComplianceEngine
 from src.services.excel_writer import ExcelWriter
 
 
+# ValidationEngine is the main service that orchestrates the entire validation process by reading the resident notes from the input sheets, analyzing them using the ComplianceEngine, and writing the compliance flags into the output sheets for each resident.
+# It is used to read the resident notes from the input sheets, analyze them using the ComplianceEngine, and write the compliance flags into the output sheets for each resident, which can then be reviewed by the care team to identify any documentation gaps and take corrective actions.
+# The engine processes each resident's notes in chronological order (day-by-day) to ensure that the compliance flags are generated in the same order as the notes, and includes error handling to ensure that the output sheet exists for each resident, raising a WorkbookError if any sheet is missing. This helps ensure that the validation process runs smoothly and that the compliance flags are recorded accurately for review by the care team.
 class ValidationEngine:
-    def __init__(self, source_workbook: Path, output_workbook: Path, compliance_engine: ComplianceEngine) -> None:
+    def __init__(
+        self,
+        source_workbook: Path,
+        output_workbook: Path,
+        compliance_engine: ComplianceEngine,
+    ) -> None:
         self.source_workbook = source_workbook
         self.output_workbook = output_workbook
         self.compliance_engine = compliance_engine
@@ -21,13 +31,19 @@ class ValidationEngine:
             resident_name = sheet_name[: -len(" - Input")]
             output_sheet = f"{resident_name} - Your Output"
             if output_sheet not in workbook.sheetnames:
-                raise WorkbookError(f"Output sheet missing for resident: {resident_name}")
+                raise WorkbookError(
+                    f"Output sheet missing for resident: {resident_name}"
+                )
             flags = self._analyze_resident_sheet(workbook[sheet_name], resident_name)
             writer.write_flags(workbook, output_sheet, flags)
         writer.save(workbook)
 
-    def _analyze_resident_sheet(self, worksheet, resident_name: str):
-        flags = []
+    def _analyze_resident_sheet(
+        self, worksheet: Worksheet, resident_name: str
+    ) -> list[ComplianceFlagModel]:
+        # The workbook is read row-by-row because each row represents a single daily note and
+        # the output workbook expects one or more flags to be appended in the same order.
+        flags: list[ComplianceFlagModel] = []
         for row in range(4, worksheet.max_row + 1):
             day = worksheet[f"A{row}"].value
             date = worksheet[f"B{row}"].value
