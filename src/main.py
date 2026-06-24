@@ -19,6 +19,7 @@ from src.core.constants import (
     LOGS_DIR,
     POLICY_PATH,
 )
+from src.ai.health import log_provider_diagnostics
 from src.parsers.policy_parser import PolicyParserImpl
 from src.services.compliance_engine import ComplianceEngine
 from src.services.validation_engine import ValidationEngine
@@ -27,8 +28,34 @@ from src.utils.logger import setup_logger
 
 
 def main() -> None:
+    if "--health-check" in sys.argv:
+        logger = setup_logger(LOGS_DIR / "processx.log")
+        validate_startup(logger)
+        log_provider_diagnostics(logger)
+        print("Provider Status")
+        print("---------------")
+        from src.ai.health import provider_diagnostics
+
+        for diag in provider_diagnostics():
+            if diag["provider"] == "local_gguf":
+                status = "HEALTHY" if diag["healthy"] else "UNHEALTHY"
+                print(f"Local GGUF : {status}")
+            elif diag["provider"] == "gemini":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"Gemini     : {status}")
+            elif diag["provider"] == "claude":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"Claude     : {status}")
+            elif diag["provider"] == "openai":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"OpenAI     : {status}")
+            elif diag["provider"] == "ollama":
+                status = "HEALTHY" if diag["healthy"] else "NOT INSTALLED"
+                print(f"Ollama     : {status}")
+        return
     logger = setup_logger(LOGS_DIR / "processx.log")
     validate_startup(logger)
+    log_provider_diagnostics(logger)
     logger.info("Policy loaded")
     rules = PolicyParserImpl(POLICY_PATH).parse()
     logger.info("Rules extracted")

@@ -6,6 +6,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 import logging
+import traceback
 from typing import Any
 
 from pydantic import ValidationError
@@ -28,19 +29,16 @@ class LLMResponse:
 class ProviderHealthCache:
     def __init__(self, cooldown_seconds: int = 600) -> None:
         self.cooldown_seconds = cooldown_seconds
-        self._failure_state: dict[str, float] = {}
+        self._failure_state: set[str] = set()
 
     def is_healthy(self, provider: str) -> bool:
-        failed_at = self._failure_state.get(provider)
-        if failed_at is None:
-            return True
-        return (time.time() - failed_at) >= self.cooldown_seconds
+        return provider not in self._failure_state
 
     def mark_failed(self, provider: str) -> None:
-        self._failure_state[provider] = time.time()
+        self._failure_state.add(provider)
 
     def mark_healthy(self, provider: str) -> None:
-        self._failure_state.pop(provider, None)
+        self._failure_state.discard(provider)
 
 
 class LLMClient:
@@ -74,13 +72,10 @@ class LLMClient:
             if not self.provider_health.is_healthy(provider):
                 self.logger.info(
                     "provider_skipped_unhealthy",
-                    extra={"event": "provider_skipped_unhealthy", "provider": provider},
+                    extra={"event": "provider_skipped_unhealthy", "provider": provider, "healthy": False},
                 )
                 continue
-            self.logger.info(
-                "provider_attempt",
-                extra={"event": "provider_attempt", "provider": provider},
-            )
+            self._log_provider_event(provider, "request_started", request_started=True)
             if provider == "local_gguf" and os.getenv("LOCAL_GGUF_ENABLED", "1") in {"0", "false", "False"}:
                 continue
             if provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
@@ -93,39 +88,29 @@ class LLMClient:
                 raw, model, token_usage = self._call_with_retries(provider, prompt)
                 selected_provider = provider
                 self.provider_health.mark_healthy(provider)
-                self.logger.info(
-                    "provider_success",
-                    extra={
-                        "event": "provider_success",
-                        "provider": provider,
-                        "model": model,
-                        "latency_ms": int((time.perf_counter() - start) * 1000),
-                    },
+                self._log_provider_event(
+                    provider,
+                    "request_completed",
+                    request_completed=True,
+                    model=model,
+                    latency_ms=int((time.perf_counter() - start) * 1000),
                 )
                 break
             except TimeoutError as exc:
                 next_provider = self._next_provider(provider)
-                self.logger.warning(
-                    "provider_failure",
-                    extra={
-                        "event": "provider_failure",
-                        "provider": provider,
-                        "error": "timeout",
-                        "next_provider": next_provider,
-                    },
+                self._log_provider_failure(
+                    provider,
+                    exc,
+                    next_provider=next_provider,
                 )
                 self.provider_health.mark_failed(provider)
                 continue
             except RuntimeError as exc:
                 next_provider = self._next_provider(provider)
-                self.logger.warning(
-                    "provider_failure",
-                    extra={
-                        "event": "provider_failure",
-                        "provider": provider,
-                        "error": str(exc),
-                        "next_provider": next_provider,
-                    },
+                self._log_provider_failure(
+                    provider,
+                    exc,
+                    next_provider=next_provider,
                 )
                 self.provider_health.mark_failed(provider)
                 continue
@@ -137,6 +122,29 @@ class LLMClient:
             model=model,
             latency_ms=latency_ms,
             token_usage=token_usage,
+        )
+
+    def _log_provider_event(self, provider: str, event_name: str, **fields: Any) -> None:
+        self.logger.info(
+            event_name,
+            extra={
+                "event": event_name,
+                "provider": provider,
+                **fields,
+            },
+        )
+
+    def _log_provider_failure(self, provider: str, exc: Exception, **fields: Any) -> None:
+        self.logger.error(
+            "provider_failure",
+            extra={
+                "event": "provider_failure",
+                "provider": provider,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                **fields,
+            },
         )
 
     def _parse_or_fallback(self, raw: str, fallback_payload: dict[str, Any]) -> StructuredExtractionModel:
@@ -272,15 +280,14 @@ class LLMClient:
         spec = get_model_spec("llama-3.2-1b")
         model_path = MODELS_DIR / spec.key / spec.filename
         auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {"1", "true", "True"}
-        self.logger.info(
+        self._log_provider_event(
+            "local_gguf",
             "local_model_status",
-            extra={
-                "event": "local_model_status",
-                "cached": model_path.exists(),
-                "model_exists": model_path.exists(),
-                "model_path": str(model_path),
-                "device": get_device_info().device,
-            },
+            cached=model_path.exists(),
+            model_exists=model_path.exists(),
+            model_path=str(model_path),
+            device=get_device_info().device,
+            model=spec.filename,
         )
         if not model_path.exists() and not auto_download:
             raise RuntimeError(f"local gguf model not cached: {model_path}")

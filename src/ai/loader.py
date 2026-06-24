@@ -18,15 +18,35 @@ def _download_model(spec: ModelSpec, model_dir: Path) -> Path:
 
     model_dir.mkdir(parents=True, exist_ok=True)
     token = get_env("HF_TOKEN")
+    local_dir = model_dir
+    logger = __import__("logging").getLogger("processx")
+    logger.info("model_download_started", extra={"event": "model_download_started", "repo_id": spec.repo_id, "filename": spec.filename, "model_dir": str(model_dir), "token_present": bool(token)})
     return Path(
-        hf_hub_download(
+        _download_hub_model(spec, local_dir, token)
+    )
+
+
+def _download_hub_model(spec: ModelSpec, local_dir: Path, token: str | None) -> str:
+    from huggingface_hub import hf_hub_download
+
+    try:
+        path = hf_hub_download(
             repo_id=spec.repo_id,
             filename=spec.filename,
-            local_dir=model_dir,
-            resume_download=True,
+            local_dir=local_dir,
             token=token,
         )
-    )
+        __import__("logging").getLogger("processx").info(
+            "model_download_completed",
+            extra={"event": "model_download_completed", "repo_id": spec.repo_id, "filename": spec.filename, "path": str(path)},
+        )
+        return path
+    except Exception as exc:
+        __import__("logging").getLogger("processx").error(
+            "model_download_failed",
+            extra={"event": "model_download_failed", "repo_id": spec.repo_id, "filename": spec.filename, "error_type": type(exc).__name__, "error_message": str(exc)},
+        )
+        raise
 
 
 @lru_cache(maxsize=1)
