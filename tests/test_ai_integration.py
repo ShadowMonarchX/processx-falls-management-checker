@@ -12,9 +12,9 @@ def test_provider_selection_prefers_env(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     client = LLMClient()
-    assert client.select_provider() == "local"
+    assert client.select_provider() == "local_gguf"
     monkeypatch.setenv("OPENAI_API_KEY", "x")
-    assert client.select_provider() == "openai"
+    assert client.select_provider() == "local_gguf"
 
 
 def test_sequential_fallback_gemini_to_claude(monkeypatch):
@@ -44,10 +44,21 @@ def test_sequential_fallback_openai_to_local(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "o")
     client = LLMClient()
+    monkeypatch.setattr(client, "_call_local_gguf", lambda prompt: (_ for _ in ()).throw(RuntimeError("local gguf failed")))
     monkeypatch.setattr(client, "_call_openai", lambda prompt: (_ for _ in ()).throw(RuntimeError("openai failed")))
     monkeypatch.setattr(client, "_call_local", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.7}', "local-model"))
     result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
     assert result.provider == "local"
+
+
+def test_local_gguf_has_highest_priority(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_local_gguf", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.95}', "local-gguf", None))
+    result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
+    assert result.provider == "local_gguf"
 
 
 def test_all_providers_fail_returns_structured_fallback(monkeypatch):

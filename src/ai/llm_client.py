@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from src.ai.loader import load_model
 from src.core.models import StructuredExtractionModel
 
 
@@ -24,31 +25,35 @@ class LLMResponse:
 
 class LLMClient:
     def __init__(self) -> None:
-        self.provider_order = ["gemini", "claude", "openai", "local"]
+        self.provider_order = ["local_gguf", "gemini", "claude", "openai", "ollama"]
         self.timeout_seconds = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
         self.retry_count = int(os.getenv("LLM_RETRY_COUNT", "3"))
         self.logger = logging.getLogger("processx")
 
     def select_provider(self) -> str:
+        if os.getenv("LOCAL_GGUF_ENABLED", "1") not in {"0", "false", "False"}:
+            return "local_gguf"
         if os.getenv("GEMINI_API_KEY"):
             return "gemini"
         if os.getenv("ANTHROPIC_API_KEY"):
             return "claude"
         if os.getenv("OPENAI_API_KEY"):
             return "openai"
-        return "local"
+        return "ollama"
 
     def extract(self, prompt: str, fallback_payload: dict[str, Any]) -> LLMResponse:
         start = time.perf_counter()
         raw = "{}"
         model = "structured-fallback"
         token_usage: dict[str, int] | None = None
-        selected_provider = "local"
+        selected_provider = "fallback"
         for provider in self.provider_order:
             self.logger.info(
                 "provider_attempted",
                 extra={"provider": provider, "status": "attempted"},
             )
+            if provider == "local_gguf" and os.getenv("LOCAL_GGUF_ENABLED", "1") in {"0", "false", "False"}:
+                continue
             if provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
                 continue
             if provider == "claude" and not os.getenv("ANTHROPIC_API_KEY"):
@@ -116,25 +121,26 @@ class LLMClient:
     def _call_with_retries(
         self, provider: str, prompt: str
     ) -> tuple[str, str, dict[str, int] | None]:
-        retryable_errors: tuple[type[Exception], ...] = (
-            TimeoutError,
-            ConnectionError,
-            RuntimeError,
-            subprocess.SubprocessError,
-        )
         for attempt in range(1, self.retry_count + 1):
             try:
+                if provider == "local_gguf":
+                    return self._call_local_gguf(prompt)
                 if provider == "openai":
                     return self._call_openai(prompt)
                 if provider == "claude":
                     return self._call_claude(prompt)
                 if provider == "gemini":
                     return self._call_gemini(prompt)
-                return (*self._call_local(prompt), None)
+                result = self._call_local(prompt)
+                if len(result) == 2:
+                    return result[0], result[1], None
+                return result
             except ValidationError as exc:
                 raise RuntimeError("schema validation error") from exc
             except Exception as exc:
-                if isinstance(exc, retryable_errors) and attempt < self.retry_count:
+                if self._is_non_retryable(exc):
+                    raise RuntimeError(str(exc)) from exc
+                if attempt < self.retry_count and self._is_retryable(exc):
                     sleep_seconds = 2 ** (attempt - 1)
                     self.logger.warning(
                         "provider_retry",
@@ -148,12 +154,21 @@ class LLMClient:
                     )
                     time.sleep(sleep_seconds)
                     continue
-                if isinstance(exc, TimeoutError):
-                    raise
-                if isinstance(exc, (ValueError, json.JSONDecodeError)):
-                    raise RuntimeError("malformed request or output") from exc
                 raise RuntimeError(str(exc)) from exc
         raise RuntimeError("retry exhaustion")
+
+    def _is_retryable(self, exc: Exception) -> bool:
+        retryable = (
+            TimeoutError,
+            ConnectionError,
+            subprocess.SubprocessError,
+        )
+        message = str(exc).lower()
+        return isinstance(exc, retryable) or "rate limit" in message or "429" in message
+
+    def _is_non_retryable(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        return isinstance(exc, (ValueError, json.JSONDecodeError, ValidationError)) or "invalid api key" in message or "authentication" in message
 
     def _call_openai(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         try:
@@ -221,7 +236,25 @@ class LLMClient:
         except Exception:
             raise
 
-    def _call_local(self, prompt: str) -> tuple[str, str]:
+    def _call_local_gguf(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
+        llm = load_model()
+        response = llm(
+            prompt,
+            max_tokens=1024,
+            temperature=0.0,
+            stop=["```"],
+        )
+        text = ""
+        if isinstance(response, dict):
+            choices = response.get("choices") or []
+            if choices:
+                text = choices[0].get("text") or choices[0].get("message", {}).get("content", "")
+        if not text and hasattr(response, "choices"):
+            choice = response.choices[0]
+            text = getattr(choice, "text", "") or getattr(getattr(choice, "message", None), "content", "")
+        return text or "{}", "local-gguf", None
+
+    def _call_local(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
         try:
             completed = subprocess.run(
@@ -232,9 +265,9 @@ class LLMClient:
                 timeout=self.timeout_seconds,
             )
             if completed.stdout.strip():
-                return completed.stdout, ollama_model
+                return completed.stdout, ollama_model, None
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("ollama timeout") from exc
         except Exception as exc:
             raise RuntimeError(str(exc)) from exc
-        return "{}", f"local:{ollama_model}"
+        return "{}", f"local:{ollama_model}", None
