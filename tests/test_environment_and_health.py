@@ -88,7 +88,11 @@ def test_ai_stack_reports_all_providers(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     stack = check_ai_stack()
-    assert set(stack) == {"local_gguf", "gemini", "claude", "openai", "ollama"}
+    assert set(stack) == {"local_model", "provider_chain", "cloud_providers"}
+    assert stack["provider_chain"]["local_gguf"] in {"healthy", "missing_model"}
+    assert stack["provider_chain"]["gemini"] == "missing_key"
+    assert stack["provider_chain"]["claude"] == "missing_key"
+    assert stack["provider_chain"]["openai"] == "missing_key"
 
 
 def test_submission_workbook_is_written_in_place():

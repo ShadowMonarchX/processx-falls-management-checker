@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 
 from src.ai.device import detect_device
@@ -28,6 +29,7 @@ def _download_model(spec: ModelSpec, model_dir: Path) -> Path:
     )
 
 
+@lru_cache(maxsize=1)
 def load_model(model_key: str = "llama-3.2-1b"):
     spec = get_model_spec(model_key)
     model_dir = MODELS_DIR / spec.key

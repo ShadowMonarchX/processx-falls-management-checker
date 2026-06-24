@@ -22,12 +22,26 @@ def check_local_model(model_key: str = "llama-3.2-1b") -> dict[str, object]:
     }
 
 
-def check_ai_stack() -> dict[str, dict[str, object]]:
+def check_cloud_providers() -> dict[str, str]:
+    status: dict[str, str] = {}
+    status["gemini"] = "ready" if get_env("GEMINI_API_KEY") else "missing_key"
+    status["claude"] = "ready" if get_env("ANTHROPIC_API_KEY") else "missing_key"
+    status["openai"] = "ready" if get_env("OPENAI_API_KEY") else "missing_key"
+    status["ollama"] = "reachable" if get_env("OLLAMA_HOST") else "unreachable"
+    return status
+
+
+def check_provider_chain() -> dict[str, str]:
     local = check_local_model()
     return {
-        "local_gguf": local,
-        "gemini": {"available": bool(get_env("GEMINI_API_KEY")), "model": get_env("GEMINI_MODEL", "gemini-2.5-pro")},
-        "claude": {"available": bool(get_env("ANTHROPIC_API_KEY")), "model": get_env("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")},
-        "openai": {"available": bool(get_env("OPENAI_API_KEY")), "model": get_env("OPENAI_MODEL", "gpt-4.1-mini")},
-        "ollama": {"available": True, "host": get_env("OLLAMA_HOST", "http://127.0.0.1:11434")},
+        "local_gguf": "healthy" if local["model_available"] else "missing_model",
+        **check_cloud_providers(),
+    }
+
+
+def check_ai_stack() -> dict[str, object]:
+    return {
+        "local_model": check_local_model(),
+        "provider_chain": check_provider_chain(),
+        "cloud_providers": check_cloud_providers(),
     }

@@ -9,32 +9,54 @@ from src.core.environment import get_env
 
 def validate_startup(logger: logging.Logger | None = None) -> None:
     logger = logger or logging.getLogger("processx")
-    checks = {
+    required_paths = {
         "policy_document": POLICY_PATH,
         "input_workbook": INPUT_WORKBOOK_PATH,
         "logs_dir": LOGS_DIR,
     }
-    for name, path in checks.items():
-        if not Path(path).exists():
-            logger.warning("startup_validation_missing", extra={"resource": name, "path": str(path)})
+    missing_paths = {
+        name: str(path)
+        for name, path in required_paths.items()
+        if not Path(path).exists()
+    }
 
     cache_dir = Path(get_env("MODEL_CACHE_DIR", "models") or "models")
     if not cache_dir.exists():
         cache_dir.mkdir(parents=True, exist_ok=True)
-        logger.warning("startup_validation_created_cache_dir", extra={"path": str(cache_dir)})
+        created_cache_dir = True
+    else:
+        created_cache_dir = False
 
-    monitored_envs = [
+    required_envs = [
+        "MODEL_CACHE_DIR",
+        "LOG_LEVEL",
+        "LLM_TIMEOUT_SECONDS",
+        "LLM_RETRY_COUNT",
+    ]
+    optional_envs = [
         "GEMINI_API_KEY",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "HF_TOKEN",
         "OLLAMA_HOST",
         "LOCAL_GGUF_AUTO_DOWNLOAD",
-        "MODEL_CACHE_DIR",
-        "LOG_LEVEL",
-        "LLM_TIMEOUT_SECONDS",
-        "LLM_RETRY_COUNT",
     ]
-    for key in monitored_envs:
-        if get_env(key) is None:
-            logger.warning("startup_validation_env_missing", extra={"env_var": key})
+    missing_required_envs = [key for key in required_envs if get_env(key) is None]
+    missing_optional_envs = [key for key in optional_envs if get_env(key) is None]
+
+    if missing_required_envs or missing_optional_envs or missing_paths or created_cache_dir:
+        logger.warning(
+            "startup_validation",
+            extra={
+                "event": "startup_validation",
+                "missing_required_env_vars": missing_required_envs,
+                "missing_optional_env_vars": missing_optional_envs,
+                "existing_env_var_count": len(required_envs) + len(optional_envs) - len(missing_required_envs) - len(missing_optional_envs),
+                "required_env_var_count": len(required_envs),
+                "optional_env_var_count": len(optional_envs),
+                "missing_path_count": len(missing_paths),
+                "missing_paths": missing_paths,
+                "cache_dir": str(cache_dir),
+                "cache_dir_created": created_cache_dir,
+            },
+        )

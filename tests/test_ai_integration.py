@@ -131,5 +131,5 @@ def test_logging_events_emitted(caplog, monkeypatch):
     with caplog.at_level("INFO", logger="processx"):
         client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
     messages = [record.message for record in caplog.records]
-    assert "provider_attempted" in messages
-    assert "provider_succeeded" in messages
+    assert "provider_attempt" in messages
+    assert "provider_success" in messages
