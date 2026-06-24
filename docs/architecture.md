@@ -5,6 +5,7 @@
 - `ComplianceEngine` evaluates each resident note against the day-specific rule set.
 - `ValidationEngine` orchestrates workbook traversal and note validation.
 - `ExcelWriter` writes the generated flags into the existing output sheets.
+- `LLMClient` performs sequential provider fallback with retries and timeouts.
 
 ## Data Flow
 1. Read policy DOCX.
@@ -18,6 +19,8 @@
 - Day 1 rules validate incident details, assessment, vital signs, and initial escalation documentation.
 - Day 2 rules validate continuation notes and follow-up updates.
 - Day 3 rules validate closure, escalation, and prevention review.
+- Provider order is Gemini -> Claude -> OpenAI -> local Ollama.
+- If a provider fails after retries or times out, the engine advances to the next provider.
 
 ## Rule Engine Flow
 - Each rule carries a requirement, trigger phrases, and explanation template.

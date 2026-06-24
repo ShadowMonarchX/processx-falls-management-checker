@@ -82,7 +82,8 @@ The official submission workbook is populated in-place at `data/raw/Your_Output_
 
 ## Provider Configuration
 - Set `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY` in `.env`.
-- Provider priority is Gemini, then Claude, then OpenAI, then local fallback.
+- Provider priority is sequential: Gemini, then Claude, then OpenAI, then local fallback.
+- If a provider times out or fails after retries, the client advances to the next provider.
 - Local fallback uses `ollama` and can be paired with `qwen2.5:3b-instruct`, `qwen2.5:7b-instruct`, or `qwen3:14b`.
 
 ## Workbook Generation

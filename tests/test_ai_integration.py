@@ -17,6 +17,54 @@ def test_provider_selection_prefers_env(monkeypatch):
     assert client.select_provider() == "openai"
 
 
+def test_sequential_fallback_gemini_to_claude(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_gemini", lambda prompt: (_ for _ in ()).throw(TimeoutError("gemini timeout")))
+    monkeypatch.setattr(client, "_call_claude", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.9}', "claude-model", None))
+    result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
+    assert result.provider == "claude"
+
+
+def test_sequential_fallback_claude_to_openai(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_claude", lambda prompt: (_ for _ in ()).throw(RuntimeError("claude failed")))
+    monkeypatch.setattr(client, "_call_openai", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.8}', "openai-model", None))
+    result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
+    assert result.provider == "openai"
+
+
+def test_sequential_fallback_openai_to_local(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_openai", lambda prompt: (_ for _ in ()).throw(RuntimeError("openai failed")))
+    monkeypatch.setattr(client, "_call_local", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.7}', "local-model"))
+    result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
+    assert result.provider == "local"
+
+
+def test_all_providers_fail_returns_structured_fallback(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_gemini", lambda prompt: (_ for _ in ()).throw(TimeoutError("gemini failed")))
+    monkeypatch.setattr(client, "_call_claude", lambda prompt: (_ for _ in ()).throw(RuntimeError("claude failed")))
+    monkeypatch.setattr(client, "_call_openai", lambda prompt: (_ for _ in ()).throw(RuntimeError("openai failed")))
+    monkeypatch.setattr(client, "_call_local", lambda prompt: (_ for _ in ()).throw(RuntimeError("local failed")))
+    fallback = {"resident_name": "Alice Nguyen", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.2}
+    result = client.extract("prompt", fallback)
+    assert result.payload.resident_name == "Alice Nguyen"
+    assert result.payload.confidence == 0.2
+
+
 def test_prompt_builder_returns_json_instruction():
     prompt = PromptBuilder().build_extraction_prompt(
         resident_name="Alice Nguyen",
@@ -49,7 +97,28 @@ def test_structured_extraction_model_validates():
     assert model.confidence == 0.5
 
 
+def test_malformed_ai_output_falls_back(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_openai", lambda prompt: ("not-json", "openai-model", None))
+    fallback = {"resident_name": "Alice Nguyen", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.2}
+    result = client.extract("prompt", fallback)
+    assert result.payload.resident_name == "Alice Nguyen"
+    assert result.payload.confidence == 0.2
+
+
 def test_output_workbook_populated():
     workbook = load_workbook(Path("data/raw/Your_Output_File.xlsx"))
     assert workbook["Alice Nguyen - Your Output"]["A4"].value is not None
     assert workbook["Thomas Brennan - Your Output"]["A4"].value is not None
+
+
+def test_logging_events_emitted(caplog, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    client = LLMClient()
+    monkeypatch.setattr(client, "_call_openai", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.8}', "openai-model", None))
+    with caplog.at_level("INFO", logger="processx"):
+        client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
+    messages = [record.message for record in caplog.records]
+    assert "provider_attempted" in messages
+    assert "provider_succeeded" in messages

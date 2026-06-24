@@ -6,3 +6,5 @@
 4. Policy context is now injected into the AI extraction prompt as structured requirements so the model can support fact extraction without owning compliance decisions.
 5. A hybrid AI plus rules architecture was chosen so the model can improve semantic interpretation while the deterministic engine remains the final source of truth.
 6. Prompt version `extraction_v1` was chosen for structured note extraction, while a manual decision was made to keep compliance verdicts rule-based to avoid hallucinated pass/fail outcomes.
+7. Sequential provider fallback is now implemented at runtime as Gemini, then Claude, then OpenAI, then local Ollama, with structured fallback payloads only after all providers fail.
+8. Timeout and retry behavior are configured for provider attempts so transient failures advance to the next provider instead of crashing the workflow.
