@@ -10,7 +10,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from src.ai.loader import load_model
+from src.ai.loader import MODELS_DIR, load_model
+from src.ai.model_registry import get_model_spec
 from src.core.models import StructuredExtractionModel
 
 
@@ -237,6 +238,11 @@ class LLMClient:
             raise
 
     def _call_local_gguf(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
+        spec = get_model_spec("llama-3.2-1b")
+        model_path = MODELS_DIR / spec.key / spec.filename
+        auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "0") in {"1", "true", "True"}
+        if not model_path.exists() and not auto_download:
+            raise RuntimeError("local gguf model not cached")
         llm = load_model()
         response = llm(
             prompt,

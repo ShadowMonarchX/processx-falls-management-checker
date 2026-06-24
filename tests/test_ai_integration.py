@@ -48,7 +48,7 @@ def test_sequential_fallback_openai_to_local(monkeypatch):
     monkeypatch.setattr(client, "_call_openai", lambda prompt: (_ for _ in ()).throw(RuntimeError("openai failed")))
     monkeypatch.setattr(client, "_call_local", lambda prompt: ('{"resident_name":"Alice Nguyen","day":"Day 1","observations":{},"evidence":[],"missing_items":[],"confidence":0.7}', "local-model"))
     result = client.extract("prompt", {"resident_name": "fallback", "day": "Day 1", "observations": {}, "evidence": [], "missing_items": [], "confidence": 0.1})
-    assert result.provider == "local"
+    assert result.provider == "ollama"
 
 
 def test_local_gguf_has_highest_priority(monkeypatch):

@@ -14,11 +14,13 @@ from src.core.constants import (
 from src.parsers.policy_parser import PolicyParserImpl
 from src.services.compliance_engine import ComplianceEngine
 from src.services.validation_engine import ValidationEngine
+from src.core.startup import validate_startup
 from src.utils.logger import setup_logger
 
 
 def main() -> None:
     logger = setup_logger(LOGS_DIR / "processx.log")
+    validate_startup(logger)
     logger.info("Policy loaded")
     rules = PolicyParserImpl(POLICY_PATH).parse()
     logger.info("Rules extracted")
