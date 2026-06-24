@@ -9,6 +9,10 @@ if __package__ is None or __package__ == "":
         sys.path.insert(0, str(venv_site_packages))
     sys.path.append(str(repo_root))
 
+from src.core.environment import apply_env_file
+
+apply_env_file(repo_root / ".env")
+
 from src.core.constants import (
     COMPLETED_WORKBOOK_PATH,
     INPUT_WORKBOOK_PATH,

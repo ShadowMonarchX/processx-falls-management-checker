@@ -1,10 +1,16 @@
 from pathlib import Path
 
 from openpyxl import load_workbook
+import pytest
 
 from src.ai.llm_client import LLMClient
 from src.ai.prompt_builder import PromptBuilder
 from src.core.models import PolicyRuleModel, StructuredExtractionModel
+
+
+@pytest.fixture(autouse=True)
+def disable_local_model_auto_download(monkeypatch):
+    monkeypatch.setenv("LOCAL_GGUF_AUTO_DOWNLOAD", "0")
 
 
 def test_provider_selection_prefers_env(monkeypatch):

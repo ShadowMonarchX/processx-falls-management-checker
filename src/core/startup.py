@@ -44,7 +44,22 @@ def validate_startup(logger: logging.Logger | None = None) -> None:
     missing_required_envs = [key for key in required_envs if get_env(key) is None]
     missing_optional_envs = [key for key in optional_envs if get_env(key) is None]
 
-    if missing_required_envs or missing_optional_envs or missing_paths or created_cache_dir:
+    logger.info(
+        "startup_validation_defaults",
+        extra={
+            "event": "startup_validation_defaults",
+            "existing_env_var_count": len(required_envs) + len(optional_envs) - len(missing_required_envs) - len(missing_optional_envs),
+            "required_env_var_count": len(required_envs),
+            "optional_env_var_count": len(optional_envs),
+            "missing_required_env_vars": missing_required_envs,
+            "missing_optional_env_vars": missing_optional_envs,
+            "missing_path_count": len(missing_paths),
+            "missing_paths": missing_paths,
+            "cache_dir": str(cache_dir),
+            "cache_dir_created": created_cache_dir,
+        },
+    )
+    if missing_required_envs or missing_paths:
         logger.warning(
             "startup_validation",
             extra={

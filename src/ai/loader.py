@@ -35,10 +35,11 @@ def load_model(model_key: str = "llama-3.2-1b"):
     model_dir = MODELS_DIR / spec.key
     model_path = model_dir / spec.filename
     if not model_path.exists():
-        auto_download = get_env("LOCAL_GGUF_AUTO_DOWNLOAD", "0") in {"1", "true", "True"}
-        if not auto_download:
+        auto_download = get_env("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {"1", "true", "True"}
+        if auto_download:
+            model_path = _download_model(spec, model_dir)
+        else:
             raise FileNotFoundError(str(model_path))
-        model_path = _download_model(spec, model_dir)
 
     device_info = detect_device()
     n_gpu_layers = -1 if device_info.device in {"cuda", "mps"} else 0

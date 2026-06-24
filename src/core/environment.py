@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -22,6 +23,11 @@ def load_env_file(path: Path | str = ".env") -> dict[str, str]:
 
 
 def get_env(key: str, default: str | None = None) -> str | None:
-    import os
-
     return os.getenv(key, default)
+
+
+def apply_env_file(path: Path | str = ".env") -> dict[str, str]:
+    values = load_env_file(path)
+    for key, value in values.items():
+        os.environ.setdefault(key, value)
+    return values

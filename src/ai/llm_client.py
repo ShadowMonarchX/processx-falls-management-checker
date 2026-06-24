@@ -46,7 +46,7 @@ class ProviderHealthCache:
 class LLMClient:
     def __init__(self) -> None:
         self.provider_order = ["local_gguf", "gemini", "claude", "openai", "ollama"]
-        self.timeout_seconds = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+        self.timeout_seconds = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
         self.retry_count = int(os.getenv("LLM_RETRY_COUNT", "3"))
         self.logger = logging.getLogger("processx")
         self.provider_health = ProviderHealthCache(
@@ -271,7 +271,7 @@ class LLMClient:
     def _call_local_gguf(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         spec = get_model_spec("llama-3.2-1b")
         model_path = MODELS_DIR / spec.key / spec.filename
-        auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "0") in {"1", "true", "True"}
+        auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {"1", "true", "True"}
         self.logger.info(
             "local_model_status",
             extra={
@@ -304,7 +304,7 @@ class LLMClient:
             text = getattr(choice, "text", "") or getattr(getattr(choice, "message", None), "content", "")
         if not text:
             raise RuntimeError("local gguf returned empty output")
-        return text, "local-gguf", None
+        return text, "llama-3.2-1b", None
 
     def _call_local(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
