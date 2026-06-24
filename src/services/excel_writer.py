@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -18,6 +19,7 @@ from src.utils.file_utils import ensure_parent
 class ExcelWriter:
     def __init__(self, output_path: Path) -> None:
         self.output_path = output_path
+        self.logger = logging.getLogger("processx")
 
     def open_workbook(self, source_path: Path):
         if not source_path.exists():
@@ -37,10 +39,15 @@ class ExcelWriter:
             worksheet[f"B{index}"] = flag.severity.value
             worksheet[f"C{index}"] = flag.field
             worksheet[f"D{index}"] = self._build_explanation(flag)
+        self.logger.info(
+            "workbook_write",
+            extra={"sheet": sheet_name, "flags_written": len(flags)},
+        )
 
     def save(self, workbook) -> None:
         ensure_parent(self.output_path)
         workbook.save(self.output_path)
+        self.logger.info("workbook_saved", extra={"path": str(self.output_path)})
 
     def _next_empty_row(self, worksheet: Worksheet) -> int:
         row = 4

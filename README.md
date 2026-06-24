@@ -12,6 +12,7 @@ The checker uses:
 - DOCX parsing to read the policy source of truth
 - Structured policy rules to represent documentation requirements
 - Excel parsing to locate resident input/output sheet pairs
+- A hybrid AI extraction layer to support semantic interpretation of nursing notes
 - A rule-based compliance engine to compare notes with policy requirements
 - Workbook writing that preserves the template structure and formatting
 
@@ -22,7 +23,7 @@ The code is organized by clean architecture boundaries:
 - `src/domain` for domain-specific model aliases
 - `src/parsers` for document and workbook parsing
 - `src/services` for validation and workbook output
-- `src/ai` for prompt and rule mapping utilities
+- `src/ai` for prompt building, provider selection, and structured extraction
 - `src/utils` for logging and filesystem helpers
 
 ## Folder Structure
@@ -62,13 +63,32 @@ uv run src/main.py
 
 The generated workbook is written to `outputs/completed_output.xlsx`.
 
+The official submission workbook is populated in-place at `data/raw/Your_Output_File.xlsx`.
+
 ## Validation Flow
 1. Load the policy DOCX.
 2. Extract structured requirements into rule objects.
-3. Load the workbook and identify each resident input/output sheet pair.
-4. Parse each day’s progress note into a resident note model.
-5. Apply the policy rules for that day.
-6. Write policy-explainable flags into the output sheet.
+3. Build a structured extraction prompt for each resident note.
+4. Run the AI extraction layer with provider fallback.
+5. Validate the extracted facts and note text against the deterministic rules.
+6. Load the workbook and identify each resident input/output sheet pair.
+7. Write policy-explainable flags into the output sheet.
+
+## AI Architecture
+- `PromptBuilder` injects the policy context and resident note into a JSON-only extraction prompt.
+- `LLMClient` selects Gemini, Claude, OpenAI, or local LLM fallback based on available configuration.
+- Structured AI output is validated before any rule evaluation occurs.
+- The rule engine remains the final source of truth for compliance decisions.
+
+## Provider Configuration
+- Set `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY` in `.env`.
+- Provider priority is Gemini, then Claude, then OpenAI, then local fallback.
+- Local fallback uses `ollama` and can be paired with `qwen2.5:3b-instruct`, `qwen2.5:7b-instruct`, or `qwen3:14b`.
+
+## Workbook Generation
+- The output workbook preserves sheets, formatting, and the existing template layout.
+- The completed artifact is written to `data/raw/Your_Output_File.xlsx`.
+- A secondary copy may be generated for internal inspection, but the official workbook is the submission artifact.
 
 ## Assumptions
 - The provided policy document is the source of truth.
@@ -78,12 +98,13 @@ The generated workbook is written to `outputs/completed_output.xlsx`.
 
 ## Design Decisions
 - The checker uses structured policy rules instead of free-form prompting during validation.
+- AI is used for structured extraction and semantic support, not for final compliance verdicts.
 - Each generated flag includes policy rule, trigger condition, evidence, missing requirement, and recommendation.
 - Workbook updates append into the blank output table rather than recreating sheets.
 
 ## Limitations
 - The implementation is focused on the supplied policy and workbook patterns.
-- It is rule-based rather than a live LLM integration at validation time.
+- The model layer depends on provider credentials or a local LLM runtime for full AI behavior.
 
 ## Future Improvements
 - Expand the rule mapper to support additional policy documents.
