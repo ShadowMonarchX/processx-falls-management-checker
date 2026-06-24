@@ -89,7 +89,7 @@ The official submission workbook is populated in-place at `data/raw/Your_Output_
 - Local GGUF inference is cache-first and uses `MODEL_CACHE_DIR` (default `models/`).
 - Set `LOCAL_GGUF_AUTO_DOWNLOAD=1` to allow automatic model download from Hugging Face on first use.
 - Set `LOCAL_GGUF_ENABLED=0` to skip the GGUF provider entirely.
-- Optional Hugging Face auth can be supplied via `HF_TOKEN` or `HUGGINGFACE_TOKEN`.
+- Optional Hugging Face auth can be supplied via `HF_TOKEN`.
 - `LLM_TIMEOUT_SECONDS` and `LLM_RETRY_COUNT` control provider timeout and retry behavior.
 
 ## Workbook Generation

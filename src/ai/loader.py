@@ -16,7 +16,7 @@ def _download_model(spec: ModelSpec, model_dir: Path) -> Path:
     from huggingface_hub import hf_hub_download
 
     model_dir.mkdir(parents=True, exist_ok=True)
-    token = get_env("HF_TOKEN") or get_env("HUGGINGFACE_TOKEN")
+    token = get_env("HF_TOKEN")
     return Path(
         hf_hub_download(
             repo_id=spec.repo_id,

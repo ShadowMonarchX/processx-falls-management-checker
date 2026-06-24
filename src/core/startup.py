@@ -28,7 +28,6 @@ def validate_startup(logger: logging.Logger | None = None) -> None:
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "HF_TOKEN",
-        "HUGGINGFACE_TOKEN",
         "OLLAMA_HOST",
         "LOCAL_GGUF_AUTO_DOWNLOAD",
         "MODEL_CACHE_DIR",
