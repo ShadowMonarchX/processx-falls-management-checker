@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
-from dataclasses import dataclass
-import logging
 import traceback
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -32,6 +32,8 @@ class ProviderHealthCache:
         self._failure_state: set[str] = set()
 
     def is_healthy(self, provider: str) -> bool:
+        # Once a provider fails in the current process, keep it out of the hot
+        # path so repeated rows do not keep triggering the same expensive error.
         return provider not in self._failure_state
 
     def mark_failed(self, provider: str) -> None:
@@ -52,6 +54,11 @@ class LLMClient:
         )
 
     def select_provider(self) -> str:
+        # Provider priority order:
+        # 1. Local GGUF model for zero API cost and offline execution.
+        # 2. Cloud providers if corresponding API keys exist.
+        # 3. Ollama as the final local fallback.
+
         if os.getenv("LOCAL_GGUF_ENABLED", "1") not in {"0", "false", "False"}:
             return "local_gguf"
         if os.getenv("GEMINI_API_KEY"):
@@ -68,15 +75,33 @@ class LLMClient:
         model = "structured-fallback"
         token_usage: dict[str, int] | None = None
         selected_provider = "fallback"
+
+        # Provider failover chain.
+        # If one provider fails, automatically continue to the next available
+        # provider without stopping the workbook processing pipeline.
+
         for provider in self.provider_order:
+            # Skip providers that have already failed in this process so a bad
+            # dependency does not create repeated latency across every row.
             if not self.provider_health.is_healthy(provider):
                 self.logger.info(
                     "provider_skipped_unhealthy",
-                    extra={"event": "provider_skipped_unhealthy", "provider": provider, "healthy": False},
+                    extra={
+                        "event": "provider_skipped_unhealthy",
+                        "provider": provider,
+                        "healthy": False,
+                    },
                 )
                 continue
+            # Log the request lifecycle before any provider-specific checks so a
+            # failure can be traced even when initialization or auth validation
+            # happens after the high-level provider selection step.
             self._log_provider_event(provider, "request_started", request_started=True)
-            if provider == "local_gguf" and os.getenv("LOCAL_GGUF_ENABLED", "1") in {"0", "false", "False"}:
+            if provider == "local_gguf" and os.getenv("LOCAL_GGUF_ENABLED", "1") in {
+                "0",
+                "false",
+                "False",
+            }:
                 continue
             if provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
                 continue
@@ -88,6 +113,8 @@ class LLMClient:
                 raw, model, token_usage = self._call_with_retries(provider, prompt)
                 selected_provider = provider
                 self.provider_health.mark_healthy(provider)
+                # Successful completion resets the provider state for the rest
+                # of the current run, because the failure may have been transient.
                 self._log_provider_event(
                     provider,
                     "request_completed",
@@ -124,7 +151,9 @@ class LLMClient:
             token_usage=token_usage,
         )
 
-    def _log_provider_event(self, provider: str, event_name: str, **fields: Any) -> None:
+    def _log_provider_event(
+        self, provider: str, event_name: str, **fields: Any
+    ) -> None:
         self.logger.info(
             event_name,
             extra={
@@ -134,7 +163,11 @@ class LLMClient:
             },
         )
 
-    def _log_provider_failure(self, provider: str, exc: Exception, **fields: Any) -> None:
+    def _log_provider_failure(
+        self, provider: str, exc: Exception, **fields: Any
+    ) -> None:
+        # Preserve the traceback in the structured log because provider errors
+        # often originate several layers below the provider wrapper itself.
         self.logger.error(
             "provider_failure",
             extra={
@@ -142,12 +175,16 @@ class LLMClient:
                 "provider": provider,
                 "error_type": type(exc).__name__,
                 "error_message": str(exc),
-                "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                "traceback": "".join(
+                    traceback.format_exception(type(exc), exc, exc.__traceback__)
+                ),
                 **fields,
             },
         )
 
-    def _parse_or_fallback(self, raw: str, fallback_payload: dict[str, Any]) -> StructuredExtractionModel:
+    def _parse_or_fallback(
+        self, raw: str, fallback_payload: dict[str, Any]
+    ) -> StructuredExtractionModel:
         try:
             data = json.loads(raw)
             return StructuredExtractionModel.model_validate(data)
@@ -179,8 +216,12 @@ class LLMClient:
                 raise RuntimeError("schema validation error") from exc
             except Exception as exc:
                 if self._is_non_retryable(exc):
+                    # Authentication and schema failures should surface
+                    # immediately instead of burning through retry budget.
                     raise RuntimeError(str(exc)) from exc
                 if attempt < self.retry_count and self._is_retryable(exc):
+                    # Exponential backoff keeps transient provider failures from
+                    # turning into a tight retry loop during batch processing.
                     sleep_seconds = 2 ** (attempt - 1)
                     self.logger.warning(
                         "provider_retry",
@@ -208,12 +249,18 @@ class LLMClient:
 
     def _is_non_retryable(self, exc: Exception) -> bool:
         message = str(exc).lower()
-        return isinstance(exc, (ValueError, json.JSONDecodeError, ValidationError)) or "invalid api key" in message or "authentication" in message
+        return (
+            isinstance(exc, (ValueError, json.JSONDecodeError, ValidationError))
+            or "invalid api key" in message
+            or "authentication" in message
+        )
 
     def _call_openai(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         try:
             from openai import OpenAI
 
+            # Instantiate the client at call time so missing SDKs and missing
+            # credentials are reported with the same runtime context as the row.
             client = OpenAI(timeout=self.timeout_seconds)
             response = client.responses.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -227,7 +274,11 @@ class LLMClient:
                     "input": getattr(usage, "input_tokens", 0) or 0,
                     "output": getattr(usage, "output_tokens", 0) or 0,
                 }
-            return response.output_text, getattr(response, "model", "gpt-4.1-mini"), token_usage
+            return (
+                response.output_text,
+                getattr(response, "model", "gpt-4.1-mini"),
+                token_usage,
+            )
         except Exception:
             raise
 
@@ -235,6 +286,8 @@ class LLMClient:
         try:
             from anthropic import Anthropic
 
+            # The messages API is used directly so the model response can be
+            # normalized into the same structured extraction contract as OpenAI.
             client = Anthropic(timeout=self.timeout_seconds)
             response = client.messages.create(
                 model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
@@ -242,7 +295,9 @@ class LLMClient:
                 timeout=self.timeout_seconds,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = "".join(block.text for block in response.content if hasattr(block, "text"))
+            text = "".join(
+                block.text for block in response.content if hasattr(block, "text")
+            )
             usage = getattr(response, "usage", None)
             token_usage = None
             if usage is not None:
@@ -250,7 +305,11 @@ class LLMClient:
                     "input": getattr(usage, "input_tokens", 0) or 0,
                     "output": getattr(usage, "output_tokens", 0) or 0,
                 }
-            return text, getattr(response, "model", "claude-3-5-sonnet-latest"), token_usage
+            return (
+                text,
+                getattr(response, "model", "claude-3-5-sonnet-latest"),
+                token_usage,
+            )
         except Exception:
             raise
 
@@ -258,6 +317,8 @@ class LLMClient:
         try:
             import google.generativeai as genai
 
+            # Gemini is configured per-request so a missing key or invalid model
+            # surfaces at the exact provider step that produced the failure.
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.5-pro"))
             response = model.generate_content(
@@ -272,14 +333,24 @@ class LLMClient:
                     "input": getattr(usage, "prompt_token_count", 0) or 0,
                     "output": getattr(usage, "candidates_token_count", 0) or 0,
                 }
-            return response.text or "", getattr(model, "model_name", "gemini-2.5-pro"), token_usage
+            return (
+                response.text or "",
+                getattr(model, "model_name", "gemini-2.5-pro"),
+                token_usage,
+            )
         except Exception:
             raise
 
     def _call_local_gguf(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         spec = get_model_spec("llama-3.2-1b")
         model_path = MODELS_DIR / spec.key / spec.filename
-        auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {"1", "true", "True"}
+        auto_download = os.getenv("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {
+            "1",
+            "true",
+            "True",
+        }
+        # Emit the model status before loading so missing cache, bad paths, and
+        # device selection are visible even when the actual load fails later.
         self._log_provider_event(
             "local_gguf",
             "local_model_status",
@@ -292,6 +363,8 @@ class LLMClient:
         if not model_path.exists() and not auto_download:
             raise RuntimeError(f"local gguf model not cached: {model_path}")
         try:
+            # The loader encapsulates cache resolution and llama.cpp setup so
+            # model loading stays identical whether it is cached or downloaded.
             llm = load_model()
         except Exception as exc:
             raise RuntimeError(f"local gguf load failed: {exc}") from exc
@@ -305,10 +378,14 @@ class LLMClient:
         if isinstance(response, dict):
             choices = response.get("choices") or []
             if choices:
-                text = choices[0].get("text") or choices[0].get("message", {}).get("content", "")
+                text = choices[0].get("text") or choices[0].get("message", {}).get(
+                    "content", ""
+                )
         if not text and hasattr(response, "choices"):
             choice = response.choices[0]
-            text = getattr(choice, "text", "") or getattr(getattr(choice, "message", None), "content", "")
+            text = getattr(choice, "text", "") or getattr(
+                getattr(choice, "message", None), "content", ""
+            )
         if not text:
             raise RuntimeError("local gguf returned empty output")
         return text, "llama-3.2-1b", None
@@ -316,6 +393,8 @@ class LLMClient:
     def _call_local(self, prompt: str) -> tuple[str, str, dict[str, int] | None]:
         ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
         try:
+            # Ollama is executed as an external process, so any missing binary or
+            # unreachable daemon must be treated as an operational dependency.
             completed = subprocess.run(
                 ["ollama", "run", ollama_model, prompt],
                 check=True,

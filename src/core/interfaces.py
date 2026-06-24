@@ -3,13 +3,13 @@ from typing import Protocol
 from src.core.models import ComplianceFlagModel, PolicyRuleModel, ResidentNoteModel
 
 
-# This file defines the interfaces for the PolicyParser and NoteAnalyzer components of the application.
-# The PolicyParser interface specifies a method for parsing policy rules, while the NoteAnalyzer interface specifies
-# a method for analyzing resident notes to identify compliance flags.
-# These interfaces allow for the implementation of different parsing and analysis strategies while maintaining a consistent structure for the application.
+# Protocols keep the parser and analyzer layers swappable without forcing a
+# concrete inheritance tree, which is useful when the AI backend changes.
 class PolicyParser(Protocol):
     def parse(self) -> list[PolicyRuleModel]: ...
 
 
 class NoteAnalyzer(Protocol):
+    # The analyzer contract returns flags rather than raw model text so the
+    # compliance engine can remain deterministic and testable.
     def analyze(self, note: ResidentNoteModel) -> list[ComplianceFlagModel]: ...

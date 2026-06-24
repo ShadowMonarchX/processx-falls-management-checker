@@ -7,7 +7,7 @@ from pathlib import Path
 from src.ai.device import detect_device
 from src.ai.model_registry import ModelSpec, get_model_spec
 from src.core.constants import BASE_DIR
-from src.core.environment import get_env
+from src.core.environment import get_env, normalize_optional_env
 
 
 MODELS_DIR = Path(get_env("MODEL_CACHE_DIR", str(BASE_DIR / "models")) or (BASE_DIR / "models"))
@@ -17,9 +17,11 @@ def _download_model(spec: ModelSpec, model_dir: Path) -> Path:
     from huggingface_hub import hf_hub_download
 
     model_dir.mkdir(parents=True, exist_ok=True)
-    token = get_env("HF_TOKEN")
+    token = normalize_optional_env(get_env("HF_TOKEN"))
     local_dir = model_dir
     logger = __import__("logging").getLogger("processx")
+    # Log metadata only after token normalization so an empty credential never
+    # propagates into the Hugging Face client as a malformed Bearer header.
     logger.info(
         "model_download_started",
         extra={
@@ -39,11 +41,17 @@ def _download_hub_model(spec: ModelSpec, local_dir: Path, token: str | None) -> 
     from huggingface_hub import hf_hub_download
 
     try:
+        # Only include the token parameter when a real credential exists so
+        # anonymous downloads remain valid and empty strings are never sent.
+        download_kwargs: dict[str, object] = {
+            "repo_id": spec.repo_id,
+            "filename": spec.filename,
+            "local_dir": local_dir,
+        }
+        if token is not None:
+            download_kwargs["token"] = token
         path = hf_hub_download(
-            repo_id=spec.repo_id,
-            filename=spec.filename,
-            local_dir=local_dir,
-            token=token,
+            **download_kwargs,
         )
         __import__("logging").getLogger("processx").info(
             "model_download_completed",
@@ -77,11 +85,15 @@ def load_model(model_key: str = "llama-3.2-1b"):
     if not model_path.exists():
         auto_download = get_env("LOCAL_GGUF_AUTO_DOWNLOAD", "true") in {"1", "true", "True"}
         if auto_download:
+            # Download on-demand so the first successful run can bootstrap an
+            # empty cache without requiring a manual prefetch step.
             model_path = _download_model(spec, model_dir)
         else:
             raise FileNotFoundError(str(model_path))
 
     device_info = detect_device()
+    # llama.cpp layer placement is device-sensitive: GPU-backed local runtimes
+    # should offload all layers, while CPU remains conservative.
     n_gpu_layers = -1 if device_info.device in {"cuda", "mps"} else 0
 
     from llama_cpp import Llama

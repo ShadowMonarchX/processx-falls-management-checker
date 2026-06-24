@@ -9,6 +9,8 @@ from src.core.environment import get_env
 
 def validate_startup(logger: logging.Logger | None = None) -> None:
     logger = logger or logging.getLogger("processx")
+    # Validate file availability early so the application can warn on missing
+    # inputs without crashing before the operator sees a useful diagnosis.
     required_paths = {
         "policy_document": POLICY_PATH,
         "input_workbook": INPUT_WORKBOOK_PATH,
@@ -22,6 +24,8 @@ def validate_startup(logger: logging.Logger | None = None) -> None:
 
     cache_dir = Path(get_env("MODEL_CACHE_DIR", "models") or "models")
     if not cache_dir.exists():
+        # Create the cache directory eagerly so first-run model downloads and
+        # cache reuse both point at the same deterministic filesystem location.
         cache_dir.mkdir(parents=True, exist_ok=True)
         created_cache_dir = True
     else:

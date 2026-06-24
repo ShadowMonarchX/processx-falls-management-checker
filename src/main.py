@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 
-# This is the main entry point of the application, which orchestrates the loading of the policy, the processing of the resident notes, and the validation of compliance against the policy rules. It sets up logging to track the progress and outcomes of each step in the process.
+# Bootstrap the repository root before imports so the same entrypoint works
+# both from the checkout and from a packaged or virtualenv execution context.
 if __package__ is None or __package__ == "":
     repo_root = Path(__file__).resolve().parents[1]
     venv_site_packages = repo_root / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
@@ -28,6 +29,8 @@ from src.utils.logger import setup_logger
 
 
 def main() -> None:
+    # The health-check path is intentionally side-effect light so operators can
+    # validate configuration without triggering workbook processing.
     if "--health-check" in sys.argv:
         logger = setup_logger(LOGS_DIR / "processx.log")
         validate_startup(logger)
