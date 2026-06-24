@@ -1,9 +1,18 @@
 import sys
 from pathlib import Path
 
-# This is the main entry point of the application, which orchestrates the loading of the policy, the processing of the resident notes, and the validation of compliance against the policy rules. It sets up logging to track the progress and outcomes of each step in the process.
+# Bootstrap the repository root before imports so the same entrypoint works
+# both from the checkout and from a packaged or virtualenv execution context.
 if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    repo_root = Path(__file__).resolve().parents[1]
+    venv_site_packages = repo_root / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if venv_site_packages.exists():
+        sys.path.insert(0, str(venv_site_packages))
+    sys.path.append(str(repo_root))
+
+from src.core.environment import apply_env_file
+
+apply_env_file(repo_root / ".env")
 
 from src.core.constants import (
     COMPLETED_WORKBOOK_PATH,
@@ -11,14 +20,45 @@ from src.core.constants import (
     LOGS_DIR,
     POLICY_PATH,
 )
+from src.ai.health import log_provider_diagnostics
 from src.parsers.policy_parser import PolicyParserImpl
 from src.services.compliance_engine import ComplianceEngine
 from src.services.validation_engine import ValidationEngine
+from src.core.startup import validate_startup
 from src.utils.logger import setup_logger
 
 
 def main() -> None:
+    # The health-check path is intentionally side-effect light so operators can
+    # validate configuration without triggering workbook processing.
+    if "--health-check" in sys.argv:
+        logger = setup_logger(LOGS_DIR / "processx.log")
+        validate_startup(logger)
+        log_provider_diagnostics(logger)
+        print("Provider Status")
+        print("---------------")
+        from src.ai.health import provider_diagnostics
+
+        for diag in provider_diagnostics():
+            if diag["provider"] == "local_gguf":
+                status = "HEALTHY" if diag["healthy"] else "UNHEALTHY"
+                print(f"Local GGUF : {status}")
+            elif diag["provider"] == "gemini":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"Gemini     : {status}")
+            elif diag["provider"] == "claude":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"Claude     : {status}")
+            elif diag["provider"] == "openai":
+                status = "HEALTHY" if diag["healthy"] else "MISSING KEY"
+                print(f"OpenAI     : {status}")
+            elif diag["provider"] == "ollama":
+                status = "HEALTHY" if diag["healthy"] else "NOT INSTALLED"
+                print(f"Ollama     : {status}")
+        return
     logger = setup_logger(LOGS_DIR / "processx.log")
+    validate_startup(logger)
+    log_provider_diagnostics(logger)
     logger.info("Policy loaded")
     rules = PolicyParserImpl(POLICY_PATH).parse()
     logger.info("Rules extracted")

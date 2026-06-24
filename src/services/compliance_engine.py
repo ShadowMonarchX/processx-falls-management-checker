@@ -6,6 +6,7 @@ from src.core.models import (
     FlagSeverity,
     PolicyRuleModel,
     ResidentNoteModel,
+    StructuredExtractionModel,
 )
 from src.utils.helpers import normalize_text
 
@@ -21,7 +22,9 @@ class ComplianceEngine:
     def __init__(self, rules: Iterable[PolicyRuleModel]) -> None:
         self.rules = sorted(list(rules), key=lambda rule: (rule.day, rule.rule_id))
 
-    def analyze(self, note: ResidentNoteModel) -> list[ComplianceFlagModel]:
+    def analyze(
+        self, note: ResidentNoteModel, extracted: StructuredExtractionModel | None = None
+    ) -> list[ComplianceFlagModel]:
         # Multiple policy rules can apply to the same note, so we evaluate every rule for the day
         # before returning flags. This avoids missing independent compliance issues.
         day_rules = [rule for rule in self.rules if rule.day == note.day_number]
@@ -29,13 +32,18 @@ class ComplianceEngine:
             return []
         flags: list[ComplianceFlagModel] = []
         for rule in day_rules:
-            flags.extend(self._evaluate_rule(note, rule))
+            flags.extend(self._evaluate_rule(note, rule, extracted))
         return flags
 
     def _evaluate_rule(
-        self, note: ResidentNoteModel, rule: PolicyRuleModel
+        self,
+        note: ResidentNoteModel,
+        rule: PolicyRuleModel,
+        extracted: StructuredExtractionModel | None = None,
     ) -> list[ComplianceFlagModel]:
         text = normalize_text(note.note_text)
+        if extracted is not None:
+            text = f"{text} {normalize_text(' '.join(extracted.evidence))}"
         if rule.rule_id == "D1_FALL_DETAILS":
             return self._check_day1_fall_details(note, rule, text)
         if rule.rule_id == "D1_ASSESSMENT":

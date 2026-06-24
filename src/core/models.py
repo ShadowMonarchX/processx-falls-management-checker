@@ -72,6 +72,17 @@ class ComplianceFlagModel(BaseModel):
         return self.missing_requirement
 
 
+class StructuredExtractionModel(BaseModel):
+    resident_name: str
+    day: str
+    observations: dict[str, Any] = Field(default_factory=dict)
+    evidence: list[str] = Field(default_factory=list)
+    missing_items: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    provider: str | None = None
+    model: str | None = None
+
+
 # The ValidationEvidence and ValidationResult models are used to structure the results of validating resident notes against the policy rules.
 # ValidationEvidence captures the text of the evidence, whether it matched the expected criteria, and any additional details.
 # ValidationResult aggregates the compliance flags raised and the evidence collected during the validation process, allowing for a comprehensive overview of the validation outcomes for each resident and day.

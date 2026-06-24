@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 
 from openpyxl.worksheet.worksheet import Worksheet
 
+from src.ai.llm_client import LLMClient
+from src.ai.prompt_builder import PromptBuilder
 from src.core.exceptions import WorkbookError
 from src.core.models import ComplianceFlagModel, ResidentNoteModel
 from src.services.compliance_engine import ComplianceEngine
@@ -21,6 +24,9 @@ class ValidationEngine:
         self.source_workbook = source_workbook
         self.output_workbook = output_workbook
         self.compliance_engine = compliance_engine
+        self.prompt_builder = PromptBuilder()
+        self.llm_client = LLMClient()
+        self.logger = logging.getLogger("processx")
 
     def run(self) -> None:
         writer = ExcelWriter(self.output_workbook)
@@ -37,6 +43,11 @@ class ValidationEngine:
             flags = self._analyze_resident_sheet(workbook[sheet_name], resident_name)
             writer.write_flags(workbook, output_sheet, flags)
         writer.save(workbook)
+        workbook.save(self.source_workbook)
+        self.logger.info(
+            "workbook_saved_in_place",
+            extra={"path": str(self.source_workbook)},
+        )
 
     def _analyze_resident_sheet(
         self, worksheet: Worksheet, resident_name: str
@@ -58,5 +69,36 @@ class ValidationEngine:
                 documented_by=str(documented_by or ""),
                 note_text=str(note_text or ""),
             )
-            flags.extend(self.compliance_engine.analyze(note))
+            prompt = self.prompt_builder.build_extraction_prompt(
+                resident_name=resident_name,
+                day=str(day),
+                note_text=note.note_text,
+                rules=self.compliance_engine.rules,
+            )
+            fallback_payload = {
+                "resident_name": resident_name,
+                "day": str(day),
+                "observations": {
+                    "documented_by": note.documented_by,
+                    "date": note.date,
+                },
+                "evidence": [note.note_text[:500]],
+                "missing_items": [],
+                "confidence": 0.2,
+                "provider": "fallback",
+                "model": "rule-derived",
+            }
+            llm_result = self.llm_client.extract(prompt, fallback_payload)
+            self.logger.info(
+                "ai_extraction",
+                extra={
+                    "provider": llm_result.provider,
+                    "model": llm_result.model,
+                    "latency_ms": llm_result.latency_ms,
+                    "resident": resident_name,
+                    "day": str(day),
+                    "confidence": llm_result.payload.confidence,
+                },
+            )
+            flags.extend(self.compliance_engine.analyze(note, llm_result.payload))
         return flags
