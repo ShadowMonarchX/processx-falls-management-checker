@@ -1,119 +1,170 @@
 # ProcessX Falls Management Compliance Checker
 
-## Project Overview
-This project reads a falls management policy and resident progress notes from Excel workbooks, extracts policy rules, validates each note against those rules, and writes policy-explainable compliance flags into the existing output worksheets.
+ProcessX is a Python checker that reads a falls management policy, extracts resident note facts with AI support, validates the notes against policy rules, and writes explainable compliance flags into the workbook template.
 
-## Business Problem
-Care staff must document post-fall monitoring consistently and completely. The task is to detect missing, vague, incomplete, and non-compliant documentation so a nurse can see exactly what needs to be corrected.
+## What This Project Does
 
-## Solution Design
-The checker uses:
+- Parses the policy DOCX into structured rules
+- Reads resident notes from the input workbook
+- Uses AI extraction to turn notes into structured facts
+- Applies deterministic compliance rules
+- Writes output flags into the resident output sheets
+- Saves the completed workbook both in the official submission file and in a secondary output copy
 
-- DOCX parsing to read the policy source of truth
-- Structured policy rules to represent documentation requirements
-- Excel parsing to locate resident input/output sheet pairs
-- A hybrid AI extraction layer to support semantic interpretation of nursing notes
-- A rule-based compliance engine to compare notes with policy requirements
-- Workbook writing that preserves the template structure and formatting
-
-## Architecture
-The code is organized by clean architecture boundaries:
-
-- `src/core` for shared contracts, constants, exceptions, and models
-- `src/domain` for domain-specific model aliases
-- `src/parsers` for document and workbook parsing
-- `src/services` for validation and workbook output
-- `src/ai` for prompt building, provider selection, and structured extraction
-- `src/utils` for logging and filesystem helpers
-
-## Folder Structure
+## Project Layout
 
 ```text
-data/raw/
-data/processed/
-docs/
-outputs/
-src/
-tests/
+data/raw/              Source workbook, policy DOCX, submission workbook
+docs/                  Architecture notes, assumptions, decisions, compliance matrix
+prompts/               Prompt templates used for AI extraction and compliance support
+src/                   Application code
+tests/                 Unit and integration tests
+outputs/               Generated completed workbook copy
+logs/                  Runtime logs
 ```
 
+## Core Workflow
+
+1. Load environment variables from `.env`
+2. Validate startup paths and provider configuration
+3. Parse the policy document into rule objects
+4. Traverse each resident input sheet
+5. Build an extraction prompt for each note
+6. Run the provider chain
+7. Validate the structured extraction against the rule engine
+8. Write compliance flags to the output sheet
+9. Save the workbook to:
+   - `data/raw/Your_Output_File.xlsx`
+   - `outputs/completed_output.xlsx`
+
+## Provider Order
+
+The runtime provider chain is:
+
+1. Local GGUF
+2. Gemini
+3. Claude
+4. OpenAI
+5. Ollama
+6. Structured fallback
+
+Local GGUF is the preferred provider. If the model file is missing, the app attempts to download it from Hugging Face when auto-download is enabled.
+
+## Local Model
+
+Primary model:
+
+- Repo: `bartowski/Llama-3.2-1B-Instruct-GGUF`
+- File: `Llama-3.2-1B-Instruct-Q4_K_M.gguf`
+- Cache directory: `models/llama-3.2-1b/`
+
+Device selection:
+
+- CUDA -> `n_gpu_layers=-1`
+- MPS -> `n_gpu_layers=-1`
+- CPU -> `n_gpu_layers=0`
+
+## Environment Setup
+
+Create a `.env` file from `.env.example`.
+
+Required and defaulted values:
+
+```env
+INPUT_WORKBOOK=data/raw/Your_Output_File.xlsx
+OUTPUT_WORKBOOK=outputs/completed_output.xlsx
+MODEL_CACHE_DIR=models
+LOG_LEVEL=INFO
+LLM_TIMEOUT_SECONDS=120
+LLM_RETRY_COUNT=3
+LOCAL_GGUF_ENABLED=1
+LOCAL_GGUF_AUTO_DOWNLOAD=true
+HF_TOKEN=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-pro
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-3-5-sonnet-latest
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+OLLAMA_HOST=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:3b-instruct
+```
+
+Optional:
+
+- `HF_TOKEN` for private Hugging Face access
+- `LOCAL_GGUF_AUTO_DOWNLOAD=false` if you want cache-only behavior
+- `LOCAL_GGUF_ENABLED=0` to skip the local GGUF provider
+
 ## Installation
+
+Using pip:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Or with uv:
+Using uv:
 
 ```bash
 uv sync
 ```
 
-## Execution
+## Run
+
+Run the checker:
 
 ```bash
 python src/main.py
 ```
 
-Or:
+Or with uv:
 
 ```bash
 uv run src/main.py
 ```
 
-The generated workbook is written to `outputs/completed_output.xlsx`.
+Health check only:
 
-The official submission workbook is populated in-place at `data/raw/Your_Output_File.xlsx`.
+```bash
+python src/main.py --health-check
+```
 
-## Validation Flow
-1. Load the policy DOCX.
-2. Extract structured requirements into rule objects.
-3. Build a structured extraction prompt for each resident note.
-4. Run the AI extraction layer with provider fallback.
-5. Validate the extracted facts and note text against the deterministic rules.
-6. Load the workbook and identify each resident input/output sheet pair.
-7. Write policy-explainable flags into the output sheet.
+## Expected Outputs
 
-## AI Architecture
-- `PromptBuilder` injects the policy context and resident note into a JSON-only extraction prompt.
-- `LLMClient` selects Gemini, Claude, OpenAI, or local LLM fallback based on available configuration.
-- Structured AI output is validated before any rule evaluation occurs.
-- The rule engine remains the final source of truth for compliance decisions.
+- Official workbook: `data/raw/Your_Output_File.xlsx`
+- Secondary generated copy: `outputs/completed_output.xlsx`
+- Runtime logs: `logs/processx.log`
 
-## Provider Configuration
-- Set `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY` in `.env`.
-- Provider priority is sequential: Gemini, then Claude, then OpenAI, then local fallback.
-- If a provider times out or fails after retries, the client advances to the next provider.
-- Local fallback uses `ollama` and can be paired with `qwen2.5:3b-instruct`, `qwen2.5:7b-instruct`, or `qwen3:14b`.
-- Hosted provider support requires the corresponding SDKs installed through `requirements.txt` or `uv sync`.
-- Local GGUF inference is cache-first and uses `MODEL_CACHE_DIR` (default `models/`).
-- Set `LOCAL_GGUF_AUTO_DOWNLOAD=1` to allow automatic model download from Hugging Face on first use.
-- Set `LOCAL_GGUF_ENABLED=0` to skip the GGUF provider entirely.
-- Optional Hugging Face auth can be supplied via `HF_TOKEN`.
-- `LLM_TIMEOUT_SECONDS` and `LLM_RETRY_COUNT` control provider timeout and retry behavior.
+## Logging
 
-## Workbook Generation
-- The output workbook preserves sheets, formatting, and the existing template layout.
-- The completed artifact is written to `data/raw/Your_Output_File.xlsx`.
-- A secondary copy may be generated for internal inspection, but the official workbook is the submission artifact.
+The app now emits structured logs for:
 
-## Assumptions
-- The provided policy document is the source of truth.
-- Existing workbook structure and formatting must be preserved.
-- Output worksheets are already present and must be reused.
-- One row in the input workbook represents one day of progress notes.
+- Startup validation
+- Provider diagnostics
+- Provider request start/completion/failure
+- Local GGUF model status
+- Model download events
+- Workbook write/save events
 
-## Design Decisions
-- The checker uses structured policy rules instead of free-form prompting during validation.
-- AI is used for structured extraction and semantic support, not for final compliance verdicts.
-- Each generated flag includes policy rule, trigger condition, evidence, missing requirement, and recommendation.
-- Workbook updates append into the blank output table rather than recreating sheets.
+## Tests
 
-## Limitations
-- The implementation is focused on the supplied policy and workbook patterns.
-- The model layer depends on provider credentials or a local LLM runtime for full AI behavior.
+Run the test suite:
 
-## Future Improvements
-- Expand the rule mapper to support additional policy documents.
-- Add more granular field-level extraction for richer explanations.
-- Extend the workbook writer to preserve row heights and styling when appending large volumes of flags.
+```bash
+pytest -q
+```
+
+Or:
+
+```bash
+uv run pytest -q
+```
+
+## Notes for Reviewers
+
+- The deterministic compliance engine remains the final source of truth.
+- AI is used for structured extraction and semantic support, not for final pass/fail decisions.
+- The repository includes a health-check mode to quickly inspect provider readiness.
+- Tests are configured to avoid accidental model downloads.
+

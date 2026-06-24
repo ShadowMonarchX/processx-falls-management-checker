@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 models/
+cache/
 model_cache/
 hf_cache/
 *.gguf
@@ -23,3 +24,4 @@ outputs/temp/
 outputs/*.xlsx
 data/processed/*
 !data/processed/.gitkeep
+outputs/

@@ -1,31 +1,57 @@
 # Loom Walkthrough
 
-## Demo Steps
-1. Open the repository and show the input workbook.
-2. Explain the policy parser and the structured rule set.
-3. Run the validation flow.
-4. Show provider selection and structured extraction logging.
-5. Open the completed workbook and review resident output sheets.
+Use this outline for a short demo of the project.
 
-## Talking Points
-- The LLM extracts structured facts from nursing notes.
-- The deterministic rule engine remains the final compliance authority.
-- Output flags are policy-grounded and traceable.
-- The workbook is populated in-place for the submission artifact.
+## 1. Introduce the Problem
 
-## Architecture Explanation
-- Policy DOCX is parsed into rule objects.
-- Prompt builder injects policy and note context.
-- LLM client selects Gemini, Claude, OpenAI, or local fallback.
-- Structured output is validated before rule evaluation.
-- Excel writer preserves the workbook template.
+- Explain that the checker validates resident progress notes against a falls management policy.
+- Show that the source workbook contains one input sheet and one output sheet per resident.
 
-## AI Reasoning Explanation
-- The model is used for structured extraction and semantic support.
-- It does not make the final compliance decision.
-- Rules decide pass/fail flags to keep the output explainable and deterministic.
+## 2. Show the Main Workflow
 
-## Policy Grounding Explanation
-- Each flag maps back to a specific policy rule.
-- Evidence and missing requirements are included in the explanation text.
-- The system is designed to stay auditable for interview review.
+- Point to `src/main.py`
+- Explain that startup loads `.env`, validates the environment, and then runs the workbook pipeline
+- Mention the `--health-check` mode for provider diagnostics
+
+## 3. Explain the AI Layer
+
+- Show `src/ai/llm_client.py`
+- Describe the provider chain:
+  - Local GGUF
+  - Gemini
+  - Claude
+  - OpenAI
+  - Ollama
+  - Structured fallback
+- Explain that AI is used for structured extraction, not final compliance decisions
+
+## 4. Explain the Local Model Path
+
+- Show `src/ai/model_registry.py`
+- Show `src/ai/loader.py`
+- Explain model caching, auto-download behavior, and device selection
+
+## 5. Show the Deterministic Validator
+
+- Show `src/services/compliance_engine.py`
+- Explain that the rule engine turns extracted facts into explainable flags
+- Emphasize that the final compliance decision is deterministic
+
+## 6. Show Workbook Output
+
+- Show `src/services/excel_writer.py`
+- Explain that the checker writes to the existing template, not a regenerated workbook
+- Point out that the completed workbook is saved both in `data/raw/Your_Output_File.xlsx` and `outputs/completed_output.xlsx`
+
+## 7. Show the Logs
+
+- Open `logs/processx.log`
+- Highlight structured provider diagnostics
+- Highlight the model download and fallback traces
+
+## 8. Suggested Closing
+
+- The app is explainable because every flag ties back to a policy rule
+- The app is resilient because it uses provider fallback and health checks
+- The app is practical because it preserves the workbook template and submission file
+

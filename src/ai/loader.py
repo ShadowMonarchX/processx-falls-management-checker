@@ -20,7 +20,16 @@ def _download_model(spec: ModelSpec, model_dir: Path) -> Path:
     token = get_env("HF_TOKEN")
     local_dir = model_dir
     logger = __import__("logging").getLogger("processx")
-    logger.info("model_download_started", extra={"event": "model_download_started", "repo_id": spec.repo_id, "filename": spec.filename, "model_dir": str(model_dir), "token_present": bool(token)})
+    logger.info(
+        "model_download_started",
+        extra={
+            "event": "model_download_started",
+            "repo_id": spec.repo_id,
+            "model_filename": spec.filename,
+            "model_dir": str(model_dir),
+            "token_present": bool(token),
+        },
+    )
     return Path(
         _download_hub_model(spec, local_dir, token)
     )
@@ -38,13 +47,24 @@ def _download_hub_model(spec: ModelSpec, local_dir: Path, token: str | None) -> 
         )
         __import__("logging").getLogger("processx").info(
             "model_download_completed",
-            extra={"event": "model_download_completed", "repo_id": spec.repo_id, "filename": spec.filename, "path": str(path)},
+            extra={
+                "event": "model_download_completed",
+                "repo_id": spec.repo_id,
+                "model_filename": spec.filename,
+                "path": str(path),
+            },
         )
         return path
     except Exception as exc:
         __import__("logging").getLogger("processx").error(
             "model_download_failed",
-            extra={"event": "model_download_failed", "repo_id": spec.repo_id, "filename": spec.filename, "error_type": type(exc).__name__, "error_message": str(exc)},
+            extra={
+                "event": "model_download_failed",
+                "repo_id": spec.repo_id,
+                "model_filename": spec.filename,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            },
         )
         raise
 
