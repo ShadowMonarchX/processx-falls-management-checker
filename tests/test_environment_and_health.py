@@ -7,6 +7,7 @@ import src.ai.loader as loader
 from src.ai.device import get_device_info
 from src.ai.health import check_ai_stack, check_local_model
 from src.core.environment import load_env_file
+from openpyxl import load_workbook
 
 
 def test_load_env_file_parses_values(tmp_path):
@@ -88,3 +89,9 @@ def test_ai_stack_reports_all_providers(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     stack = check_ai_stack()
     assert set(stack) == {"local_gguf", "gemini", "claude", "openai", "ollama"}
+
+
+def test_submission_workbook_is_written_in_place():
+    workbook = load_workbook(Path("data/raw/Your_Output_File.xlsx"))
+    assert workbook["Alice Nguyen - Your Output"]["A4"].value is not None
+    assert workbook["Thomas Brennan - Your Output"]["A4"].value is not None

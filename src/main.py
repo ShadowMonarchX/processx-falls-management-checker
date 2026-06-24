@@ -3,7 +3,11 @@ from pathlib import Path
 
 # This is the main entry point of the application, which orchestrates the loading of the policy, the processing of the resident notes, and the validation of compliance against the policy rules. It sets up logging to track the progress and outcomes of each step in the process.
 if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    repo_root = Path(__file__).resolve().parents[1]
+    venv_site_packages = repo_root / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if venv_site_packages.exists():
+        sys.path.insert(0, str(venv_site_packages))
+    sys.path.append(str(repo_root))
 
 from src.core.constants import (
     COMPLETED_WORKBOOK_PATH,

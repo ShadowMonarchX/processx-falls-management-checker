@@ -43,6 +43,11 @@ class ValidationEngine:
             flags = self._analyze_resident_sheet(workbook[sheet_name], resident_name)
             writer.write_flags(workbook, output_sheet, flags)
         writer.save(workbook)
+        workbook.save(self.source_workbook)
+        self.logger.info(
+            "workbook_saved_in_place",
+            extra={"path": str(self.source_workbook)},
+        )
 
     def _analyze_resident_sheet(
         self, worksheet: Worksheet, resident_name: str
