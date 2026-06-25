@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
 
+repo_root = Path(__file__).resolve().parents[1]
+
 # Bootstrap the repository root before imports so the same entrypoint works
 # both from the checkout and from a packaged or virtualenv execution context.
 if __package__ is None or __package__ == "":
-    repo_root = Path(__file__).resolve().parents[1]
     venv_site_packages = repo_root / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
     if venv_site_packages.exists():
         sys.path.insert(0, str(venv_site_packages))
